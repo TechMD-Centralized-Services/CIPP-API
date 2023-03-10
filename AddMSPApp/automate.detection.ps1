@@ -1,29 +1,22 @@
 $ServerAddress = '##SERVER##'
-if (Get-Module -ListAvailable -Name ConnectWiseAutomateAgent) {
-    Import-Module ConnectWiseAutomateAgent
-}
-else {
-    Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
-    Install-Module -Name PowerShellGet -Force -AllowClobber
-    Update-Module -Name PowerShellGet
-    Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted 
-    Install-Module ConnectWiseAutomateAgent -MinimumVersion 0.1.2.0 -Confirm:$false -Force
-}
+$LTposh = 'https://dev.azure.com/TechMD/8804336a-dc65-46f8-b0d6-9cb82d919fd2/_apis/git/repositories/c8fbcf7f-1b27-4bca-b3b9-97407c0005eb/items?path=/LabTech.psm1&versionDescriptor[versionOptions]=0&versionDescriptor[versionType]=0&versionDescriptor[version]=main&resolveLfs=true&$format=octetStream&api-version=5.0&download=true'
 
-Invoke-CWAACommand -Command 'Send Status'
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;(new-object Net.WebClient).DownloadString($LTposh) | iex
+
 Start-Sleep -Seconds 20
 
-$AgentInfo = Get-CWAAInfo
-$ServerPassword = ConvertFrom-CWAASecurity $AgentInfo.ServerPassword
-$LastContact = try { Get-Date $AgentInfo.LastSuccessStatus } catch { $null }
+$LTServer = (Get-LTServiceInfo).Server
+$LastSuccess = (Get-LTServiceInfo).LastSuccessStatus | Get-Date
+$90days = (Get-Date).AddDays(-90)
+$TimeSpan = New-Timespan -Start $LastSuccess -End $90days
 
-
-if ($AgentInfo.ID -gt 0 -and $LastContact -gt (Get-Date).AddDays(-30) -and $AgentInfo.Server -contains $ServerAddress -and $ServerPassword -ne 'Enter the server password here.') {
+if($LTServer -notcontains $ServerAddress){
+    Write-Output 'ERROR: Agent is not healthy'
+    exit 1
+}elseif($TimeSpan.Days -gt 90){
+    Write-Output 'ERROR: Agent is not healthy'
+    exit 1
+}else{
     Write-Output 'SUCCESS: Agent is healthy'
     exit 0
-}
-else {
-    Write-Output 'ERROR: Agent is not healthy'
-    Write-Output ($AgentInfo | Select-Object ID, LocationID, LastSuccessStatus, Server | ConvertTo-Json)
-    exit 1
 }
